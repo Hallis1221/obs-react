@@ -421,13 +421,16 @@ def chart_coverage(show: bool) -> None:
 @click.option("--interval", default=60, help="Polling interval in seconds")
 @click.option("--threshold", default=1.0, help="Minimum price move %% to trigger signal")
 @click.option("--max-age", default=30, help="Max age of announcements to check (minutes)")
-def monitor(interval: int, threshold: float, max_age: int) -> None:
-    """Real-time monitor: detect momentum signals from NewsWeb announcements."""
+@click.option("--strategy", default="fade", type=click.Choice(["fade", "momentum"]),
+              help="fade=mean reversion (82%% WR), momentum=trade with move")
+def monitor(interval: int, threshold: float, max_age: int, strategy: str) -> None:
+    """Real-time monitor: detect trade signals from NewsWeb announcements."""
     from obs_react.db.schema import init_db
     from obs_react.monitor import monitor_loop
 
     init_db()
-    click.echo(f"Starting real-time monitor (threshold={threshold}%, interval={interval}s)")
+    label = "FADE (mean reversion)" if strategy == "fade" else "MOMENTUM"
+    click.echo(f"Starting monitor: {label}, threshold={threshold}%, interval={interval}s")
     click.echo("Press Ctrl+C to stop.\n")
     monitor_loop(
         interval_seconds=interval,
