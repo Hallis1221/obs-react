@@ -455,3 +455,31 @@ def check_signals(threshold: float, max_age: int) -> None:
             click.echo(f"  {s}")
     else:
         click.echo("No signals detected.")
+
+
+@cli.command()
+@click.option("--use-llm", is_flag=True, help="Use LLM classifier (needs ANTHROPIC_API_KEY)")
+def backtest(use_llm: bool) -> None:
+    """Backtest the announcement classifier against historical data."""
+    from obs_react.db.schema import init_db
+    from obs_react.analysis.classifier import backtest_classifier
+
+    init_db()
+    click.echo("Running backtest...")
+    results = backtest_classifier(use_llm=use_llm)
+
+    if "error" in results:
+        click.echo(f"Error: {results['error']}")
+        return
+
+    click.echo(f"\n{'='*50}")
+    click.echo(f"BACKTEST RESULTS ({'LLM' if use_llm else 'Rule-based'})")
+    click.echo(f"{'='*50}")
+    click.echo(f"Events with data: {results['events_with_data']}")
+    click.echo(f"Trades taken:     {results['trades']}")
+    click.echo(f"Skipped:          {results['skipped']}")
+    click.echo(f"Win rate:         {results['win_rate']*100:.1f}%")
+    click.echo(f"Mean return:      {results['mean_return']*100:+.2f}%")
+    click.echo(f"Total return:     {results['total_return']*100:+.1f}%")
+    click.echo(f"Best trade:       {results['best_trade']*100:+.2f}%")
+    click.echo(f"Worst trade:      {results['worst_trade']*100:+.2f}%")

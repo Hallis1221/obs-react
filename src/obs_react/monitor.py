@@ -41,14 +41,21 @@ class Signal:
     move_pct: float
     volume_bucket: str | None
     detected_at: str
+    classifier_agrees: bool | None = None  # True if text classifier agrees with momentum
+    classifier_confidence: float | None = None
 
     def __str__(self) -> str:
         arrow = "↑" if self.direction == "LONG" else "↓"
+        confirm = ""
+        if self.classifier_agrees is True:
+            confirm = " ✓CONFIRMED"
+        elif self.classifier_agrees is False:
+            confirm = " ✗DISAGREE"
         return (
             f"{arrow} {self.direction} {self.ticker} | "
             f"Move: {self.move_pct:+.2f}% | "
             f"Price: {self.price_at_news:.2f} -> {self.price_now:.2f} | "
-            f"Vol: {self.volume_bucket or '?'} | "
+            f"Vol: {self.volume_bucket or '?'}{confirm} | "
             f"{self.announcement_title[:50]}"
         )
 
@@ -155,6 +162,25 @@ def check_for_signals(
             meta = get_stock_meta(ticker + ".OL" if not ticker.endswith(".OL") else ticker)
             direction = "LONG" if move > 0 else "SHORT"
 
+            # Run text classifier for confirmation
+            classifier_agrees = None
+            classifier_conf = None
+            try:
+                from obs_react.analysis.classifier import classify_rule_based
+                from obs_react.models import Announcement
+                fake_ann = Announcement(
+                    id=0, message_id=msg["message_id"], ticker=ticker,
+                    published_at=msg["published_at"], category=msg["category"],
+                    title=msg["title"], url=msg["url"],
+                    fetched_at=now.isoformat(),
+                )
+                pred = classify_rule_based(fake_ann)
+                if pred.direction != "SKIP":
+                    classifier_agrees = (pred.direction == direction)
+                    classifier_conf = pred.confidence
+            except Exception:
+                pass
+
             signal = Signal(
                 ticker=ticker,
                 direction=direction,
@@ -166,6 +192,8 @@ def check_for_signals(
                 move_pct=move * 100,
                 volume_bucket=meta.volume_bucket if meta else None,
                 detected_at=now.isoformat(),
+                classifier_agrees=classifier_agrees,
+                classifier_confidence=classifier_conf,
             )
             signals.append(signal)
             log.info(f"SIGNAL: {signal}")
