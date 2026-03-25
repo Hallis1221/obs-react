@@ -413,3 +413,45 @@ def chart_coverage(show: bool) -> None:
     init_db()
     p = coverage_heatmap(show=show)
     click.echo(f"Saved: {p}")
+
+
+# --- monitor ---
+
+@cli.command()
+@click.option("--interval", default=60, help="Polling interval in seconds")
+@click.option("--threshold", default=1.0, help="Minimum price move %% to trigger signal")
+@click.option("--max-age", default=30, help="Max age of announcements to check (minutes)")
+def monitor(interval: int, threshold: float, max_age: int) -> None:
+    """Real-time monitor: detect momentum signals from NewsWeb announcements."""
+    from obs_react.db.schema import init_db
+    from obs_react.monitor import monitor_loop
+
+    init_db()
+    click.echo(f"Starting real-time monitor (threshold={threshold}%, interval={interval}s)")
+    click.echo("Press Ctrl+C to stop.\n")
+    monitor_loop(
+        interval_seconds=interval,
+        move_threshold=threshold / 100.0,
+        max_age_minutes=max_age,
+    )
+
+
+@cli.command("check-signals")
+@click.option("--threshold", default=1.0, help="Minimum price move %% to trigger signal")
+@click.option("--max-age", default=30, help="Max age of announcements to check (minutes)")
+def check_signals(threshold: float, max_age: int) -> None:
+    """One-shot check for current momentum signals."""
+    from obs_react.db.schema import init_db
+    from obs_react.monitor import check_for_signals
+
+    init_db()
+    signals = check_for_signals(
+        move_threshold=threshold / 100.0,
+        max_age_minutes=max_age,
+    )
+    if signals:
+        click.echo(f"Found {len(signals)} signal(s):\n")
+        for s in signals:
+            click.echo(f"  {s}")
+    else:
+        click.echo("No signals detected.")
