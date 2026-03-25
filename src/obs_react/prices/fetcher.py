@@ -55,10 +55,12 @@ def fetch_prices(
     log.info(f"Fetching {ol_ticker} {interval} bars: {start.date()} to {end.date()}")
 
     try:
+        # yfinance 'end' is exclusive — add 1 day so same-day queries work
+        end_inclusive = end + timedelta(days=1)
         data = yf.download(
             ol_ticker,
             start=start.strftime("%Y-%m-%d"),
-            end=end.strftime("%Y-%m-%d"),
+            end=end_inclusive.strftime("%Y-%m-%d"),
             interval=interval,
             progress=False,
             auto_adjust=True,
