@@ -118,8 +118,8 @@ def backfill_prices_for_ticker(ticker: str) -> int:
             log.info(f"1m bars: {inserted} new of {len(bars)} fetched")
             _time.sleep(YFINANCE_RATE_LIMIT)
 
-        # Tier 2: 5-minute bars (last 60 days)
-        start_5m = now - timedelta(days=60)
+        # Tier 2: 5-minute bars (last 59 days to stay within yfinance's 60-day limit)
+        start_5m = now - timedelta(days=59)
         existing_min, existing_max = get_price_bar_range(ol_ticker, "5m")
         if existing_max is None or datetime.fromisoformat(existing_max) < now - timedelta(hours=1):
             bars = fetch_prices(ticker, start_5m, now, "5m")

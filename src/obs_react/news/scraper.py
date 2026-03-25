@@ -227,51 +227,52 @@ def _extract_ticker_from_item(item: dict) -> str | None:
 
 
 def _scrape_via_dom(since: datetime | None, max_pages: int) -> list[dict]:
-    """Fallback: render the page and scrape the DOM with Playwright."""
+    """Fallback: render the page and scrape the DOM with Playwright.
+
+    NewsWeb is a React SPA — URL-based pagination doesn't work.
+    Instead we load the page once and click "Load More" / scroll to paginate.
+    """
     from playwright.sync_api import sync_playwright
 
     announcements = []
+    seen_ids: set[str] = set()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
+        log.info(f"Scraping DOM: {NEWSWEB_BASE_URL}")
+        page.goto(NEWSWEB_BASE_URL, wait_until="networkidle", timeout=30000)
+        _time.sleep(3)
+
+        # Wait for the message list to appear
+        try:
+            page.wait_for_selector(
+                "table, .message-list, [class*='message'], [class*='disclosure']",
+                timeout=10000,
+            )
+        except Exception:
+            log.warning("Could not find message elements on page")
+            browser.close()
+            return announcements
+
         for page_num in range(1, max_pages + 1):
-            url = NEWSWEB_BASE_URL
-            if page_num > 1:
-                url = f"{NEWSWEB_BASE_URL}?page={page_num}"
-
-            log.info(f"Scraping DOM page {page_num}: {url}")
-            page.goto(url, wait_until="networkidle", timeout=30000)
-            _time.sleep(2)
-
-            # Wait for the message list to appear
-            try:
-                page.wait_for_selector(
-                    "table, .message-list, [class*='message'], [class*='disclosure']",
-                    timeout=10000,
-                )
-            except Exception:
-                log.warning("Could not find message elements on page")
-                break
-
-            # Try to extract data from table rows or list items
+            # Extract all visible rows
             rows = page.query_selector_all(
                 "table tbody tr, .message-list .message, [class*='message-row']"
             )
-
             if not rows:
-                log.info("No rows found, trying alternative selectors")
                 rows = page.query_selector_all("a[href*='/message/']")
 
             if not rows:
-                log.info("No more messages found")
+                log.info("No rows found on page")
                 break
 
             page_messages = []
             for row in rows:
                 msg = _parse_dom_row(row, page)
-                if msg:
+                if msg and msg["message_id"] not in seen_ids:
+                    seen_ids.add(msg["message_id"])
                     if since and msg.get("published_at"):
                         dt = datetime.fromisoformat(msg["published_at"])
                         if dt.tzinfo is None:
@@ -283,8 +284,43 @@ def _scrape_via_dom(since: datetime | None, max_pages: int) -> list[dict]:
                     page_messages.append(msg)
 
             announcements.extend(page_messages)
-            log.info(f"Found {len(page_messages)} messages on page {page_num}")
-            _time.sleep(NEWSWEB_RATE_LIMIT)
+            log.info(f"Page {page_num}: {len(page_messages)} new messages (total: {len(announcements)})")
+
+            if not page_messages:
+                log.info("No new messages found, stopping")
+                break
+
+            # Try to load more content by clicking "Load More" or similar button
+            loaded_more = False
+            for selector in [
+                "button:has-text('Load more')",
+                "button:has-text('Vis flere')",
+                "button:has-text('Last inn flere')",
+                "button:has-text('More')",
+                "[class*='load-more']",
+                "[class*='loadMore']",
+                "button[class*='more']",
+            ]:
+                try:
+                    btn = page.query_selector(selector)
+                    if btn and btn.is_visible():
+                        btn.click()
+                        _time.sleep(NEWSWEB_RATE_LIMIT + 1)
+                        page.wait_for_load_state("networkidle", timeout=10000)
+                        loaded_more = True
+                        break
+                except Exception:
+                    continue
+
+            if not loaded_more:
+                # Try scrolling to bottom to trigger infinite scroll
+                prev_height = page.evaluate("document.body.scrollHeight")
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                _time.sleep(NEWSWEB_RATE_LIMIT + 1)
+                new_height = page.evaluate("document.body.scrollHeight")
+                if new_height == prev_height:
+                    log.info("No more content to load (scroll height unchanged)")
+                    break
 
         browser.close()
 
