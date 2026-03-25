@@ -253,14 +253,17 @@ def report_buckets() -> None:
             continue
         rows = []
         for d in data:
+            rt = d.get("reaction_time", {})
+            ar = d.get("abnormal_return", {})
             rows.append([
                 d["bucket"],
-                d["count"],
-                f"{d['mean_reaction_time']:.0f}s" if d["mean_reaction_time"] is not None else "N/A",
-                f"{d['median_reaction_time']:.0f}s" if d["median_reaction_time"] is not None else "N/A",
-                f"{d['mean_ar']:.4f}" if d["mean_ar"] is not None else "N/A",
+                d.get("window", ""),
+                d.get("event_count", 0),
+                f"{rt['mean']:.0f}s" if rt.get("mean") is not None else "N/A",
+                f"{rt['median']:.0f}s" if rt.get("median") is not None else "N/A",
+                f"{ar['mean']:.4f}" if ar.get("mean") is not None else "N/A",
             ])
-        headers = ["Bucket", "Events", "Mean RT", "Median RT", "Mean AR"]
+        headers = ["Bucket", "Window", "Events", "Mean RT", "Median RT", "Mean AR"]
         click.echo(tabulate(rows, headers=headers, tablefmt="simple"))
 
 
@@ -308,31 +311,35 @@ def chart() -> None:
 @chart.command("scatter")
 def chart_scatter() -> None:
     """Reaction time vs market cap/volume scatter plots."""
-    from obs_react.viz.charts import plot_scatter
-    path = plot_scatter()
-    click.echo(f"Saved scatter plot to {path}")
+    from obs_react.viz.charts import scatter_reaction_vs_mcap, scatter_reaction_vs_volume
+    path1 = scatter_reaction_vs_mcap()
+    click.echo(f"Saved market cap scatter to {path1}")
+    path2 = scatter_reaction_vs_volume()
+    click.echo(f"Saved volume scatter to {path2}")
 
 
 @chart.command("boxplot")
 def chart_boxplot() -> None:
     """Box plot of reaction time by bucket."""
-    from obs_react.viz.charts import plot_boxplot
-    path = plot_boxplot()
-    click.echo(f"Saved box plot to {path}")
+    from obs_react.viz.charts import boxplot_by_bucket
+    path1 = boxplot_by_bucket("market_cap")
+    click.echo(f"Saved market cap box plot to {path1}")
+    path2 = boxplot_by_bucket("volume")
+    click.echo(f"Saved volume box plot to {path2}")
 
 
 @chart.command("car")
 @click.argument("event_id", type=int)
 def chart_car(event_id: int) -> None:
     """CAR timeline for a specific event (by announcement ID)."""
-    from obs_react.viz.charts import plot_car
-    path = plot_car(event_id)
+    from obs_react.viz.charts import car_timeline
+    path = car_timeline(event_id)
     click.echo(f"Saved CAR plot to {path}")
 
 
 @chart.command("coverage")
 def chart_coverage() -> None:
     """Data quality heatmap."""
-    from obs_react.viz.charts import plot_coverage
-    path = plot_coverage()
+    from obs_react.viz.charts import coverage_heatmap
+    path = coverage_heatmap()
     click.echo(f"Saved coverage heatmap to {path}")
