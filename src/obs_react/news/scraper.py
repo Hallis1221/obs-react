@@ -292,7 +292,12 @@ def _scrape_via_dom(since: datetime | None, max_pages: int) -> list[dict]:
 
 
 def _parse_dom_row(element, page) -> dict | None:
-    """Parse a DOM element into an announcement dict."""
+    """Parse a DOM element into an announcement dict.
+
+    NewsWeb table rows have tab-separated cells. A typical inner_text looks like:
+      "25.03.2026 11:18\\tXOSL\\tDOFG\\tDOF Group ASA - Awarded...\\tADDITIONAL..."
+    or with newlines separating rows of cells.
+    """
     try:
         text = element.inner_text()
         href = element.get_attribute("href") or ""
@@ -312,32 +317,64 @@ def _parse_dom_row(element, page) -> dict | None:
         if not message_id:
             return None
 
-        # Split text into fields — layout varies
-        parts = [p.strip() for p in text.split("\n") if p.strip()]
+        # Split by tabs first (table cells), then by newlines
+        # Flatten all tokens
+        tokens = []
+        for line in text.split("\n"):
+            for cell in line.split("\t"):
+                cell = cell.strip()
+                if cell:
+                    tokens.append(cell)
 
-        # Heuristic extraction
+        # Parse tokens by pattern
+        published_at = ""
+        exchange = ""
         ticker = ""
         title = ""
         category = ""
-        published_at = ""
 
-        for part in parts:
-            # Date patterns
-            if re.match(r"\d{4}-\d{2}-\d{2}", part) or re.match(r"\d{2}\.\d{2}\.\d{4}", part):
-                published_at = part
-            elif re.match(r"^[A-Z]{2,10}$", part):
-                ticker = part
-            elif len(part) > 30:
-                title = part
-            elif not category and part.isupper() and len(part) > 3:
-                category = part
+        for token in tokens:
+            # Date+time pattern: "25.03.2026 11:18" or "2026-03-25 11:18"
+            if re.match(r"\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}", token):
+                published_at = token
+            elif re.match(r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}", token):
+                published_at = token
+            # Exchange codes: XOSL, XOAX, MERK, etc. (may be comma-separated)
+            elif re.match(r"^[A-Z]{3,5}(,\s*[A-Z]{3,5})*$", token) and token in (
+                "XOSL", "XOAX", "MERK", "XOAM", "NOTC", "XOAS",
+            ) or all(
+                ex.strip() in ("XOSL", "XOAX", "MERK", "XOAM", "NOTC", "XOAS")
+                for ex in token.split(",")
+            ):
+                exchange = token
+            # Ticker: short uppercase, 1-10 chars, not an exchange
+            elif re.match(r"^[A-Z0-9]{1,10}$", token) and not ticker and token not in (
+                "XOSL", "XOAX", "MERK", "XOAM", "NOTC", "XOAS",
+            ):
+                ticker = token
+            # Category: longer uppercase string
+            elif token.isupper() and len(token) > 10 and not category:
+                category = token
+            # Title: mixed case or long text
+            elif len(token) > 15 and not title:
+                title = token
 
-        if not ticker and parts:
-            ticker = parts[0]
+        if not ticker:
+            # Last resort: look for ticker-like token after exchange token
+            for i, token in enumerate(tokens):
+                if any(ex in token for ex in ("XOSL", "XOAX", "MERK", "XOAM")):
+                    if i + 1 < len(tokens):
+                        candidate = tokens[i + 1].strip()
+                        if re.match(r"^[A-Z0-9]{1,10}$", candidate):
+                            ticker = candidate
+                            break
+
+        if not ticker:
+            return None
 
         if published_at:
             try:
-                for fmt in ("%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M", "%Y-%m-%dT%H:%M:%S"):
+                for fmt in ("%d.%m.%Y %H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
                     try:
                         dt = datetime.strptime(published_at, fmt)
                         dt = dt.replace(tzinfo=OSLO_TZ)
