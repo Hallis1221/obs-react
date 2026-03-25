@@ -30,19 +30,32 @@ STRONG_POSITIVE = [
     (r"awarded.*contract", "contract_win", 0.7),
     (r"new (contract|order|agreement).*(?:USD|NOK|EUR|million|billion)", "contract_win", 0.75),
     (r"substantial\*?\s*contract", "contract_win", 0.7),
+    (r"secures.*(?:NOK|USD|EUR)\s*\d+.*(?:order|contract)", "contract_win", 0.75),
     # Earnings beats
     (r"(record|strong|significant).*(revenue|earnings|profit|ebitda)", "earnings_beat", 0.65),
     (r"(exceed|above|beat).*(expectation|estimate|consensus|guidance)", "earnings_beat", 0.7),
     (r"(increase|raise|upgrade).*(?:dividend|guidance|outlook|forecast)", "guidance_up", 0.65),
+    (r"trading update.*(?:strong|positive|ahead|above)", "earnings_beat", 0.65),
+    # Dividends declared (strong positive for small caps)
+    (r"dividend.*(?:declared|proposed|approved).*(?:NOK|per share)", "dividend_declared", 0.7),
+    (r"ex.?(?:date|dividend).*(?:NOK|utbytte)", "dividend_ex", 0.55),
     # Strategic positive
     (r"(strategic|transformative).*(acquisition|partnership|alliance)", "strategic_positive", 0.6),
     (r"(merger|acquisition).*(?:agreed|completed|closed)", "ma_positive", 0.6),
+    # Capital raise COMPLETED (often positive — shows demand)
+    (r"final results.*(?:subsequent offer|private placement|subscription)", "capital_raise_done", 0.6),
+    (r"(?:oversubscribed|fully subscribed)", "capital_raise_done", 0.65),
+    (r"disclosure of large shareholding", "major_holder_buying", 0.55),
     # Insider buying (not selling)
     (r"(buy|purchase|acquisition).*(?:shares|stock).*(?:primary insider|pdmr|board|ceo|cfo)", "insider_buy", 0.6),
     # Buyback
     (r"share (buy.?back|repurchase).*(?:program|programme)", "buyback", 0.55),
     # Listing / IPO positive
     (r"first day of trading", "ipo_listing", 0.5),
+    # Robust/positive clinical/product results
+    (r"(robust|positive|promising).*(immunogenicity|efficacy|data|results)", "positive_results", 0.6),
+    # Underwriting (shows strong investor demand)
+    (r"underwr(?:iting|itten).*(?:\d+%|fully)", "underwriting", 0.6),
 ]
 
 # High-impact negative patterns
@@ -53,21 +66,29 @@ STRONG_NEGATIVE = [
     (r"(liquidat|bankrupt|wind.?up)", "distress", 0.85),
     (r"(default|cross.default|breach of covenant)", "default", 0.8),
     (r"(restructur|refinanc).*(?:debt|loan|bond)", "restructuring", 0.65),
-    # Dilution
+    (r"update on previously announced financial", "financial_distress", 0.8),
+    # Bond/debt issues
+    (r"(?:bond coupon|coupon payment).*(?:multi.currency|subordinated)", "bond_distress", 0.65),
+    # Dilution — capital raises (often negative on announcement)
     (r"(private placement|share issue|new share capital).*(?:NOK|shares)", "dilution", 0.6),
     (r"(dilut|capital increase)", "dilution", 0.55),
+    (r"commencement of subscription period.*(?:rights issue|offer)", "capital_raise", 0.6),
+    (r"share option.*(?:grant|exercise).*(?:incentive|employee)", "option_dilution", 0.55),
     # Earnings miss
     (r"(below|miss|disappoint).*(expectation|estimate|guidance)", "earnings_miss", 0.7),
     (r"(profit warning|revised.*guidance.*down|lower.*outlook)", "profit_warning", 0.75),
     (r"(impairment|write.?down|provision)", "writedown", 0.6),
+    (r"fourth quarter report.*(?:loss|negative|decline)", "earnings_miss", 0.65),
     # Insider selling
     (r"(sale|sold|disposal).*(?:shares|stock).*(?:primary insider|pdmr|board|ceo|cfo)", "insider_sell", 0.55),
-    # Trading halt (usually bad)
-    (r"trading halt", "halt", 0.6),
+    # Trading halt / suspension (usually bad)
+    (r"trading (halt|suspension|resumption)", "halt", 0.65),
     # Delisting
-    (r"delist", "delisting", 0.65),
+    (r"(delist|strykning)", "delisting", 0.65),
     # Loss / negative results
     (r"(net loss|operating loss|negative)", "loss", 0.5),
+    # Major holder SELLING (Goldman etc. disclosing = often selling)
+    (r"(goldman sachs|morgan stanley|jpmorgan).*disclosure", "major_holder_selling", 0.55),
 ]
 
 # Noise patterns — skip these
@@ -76,10 +97,6 @@ NOISE_PATTERNS = [
     r"financial calendar",
     r"annual general meeting.*notice",
     r"innkalling til.*generalforsamling",
-    r"annual report.*(?:2024|2025|2026)",
-    r"årsrapport",
-    r"årsmelding",
-    r"ex.?(?:date|dividend|utbytte)",
     r"protokoll.*generalforsamling",
     r"total number of voting rights",
     r"endring i antall aksjer",
